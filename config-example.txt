@@ -1,0 +1,13 @@
+## RENAME THIS FILE TO config.ini
+## ENTER YOUR Destination AND Source(s)
+
+[Paths]
+Destination=\\NAS\\Steam Library\steamapps\common
+
+[Sources]
+Source1=C:\Program Files (x86)\Steam\steamapps\common
+Source2=D:\SteamLibrary\steamapps\common
+
+# Add more source directories as needed, incrementing the number
+# Source3=E:\AnotherSteamLibrary
+# Source4=F:\YetAnotherSteamLibrary
