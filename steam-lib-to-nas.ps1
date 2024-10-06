@@ -11,6 +11,10 @@ function Read-ConfigFile {
         Sources = @()
     }
     
+    if (!(Test-Path $configPath)) {
+        throw "Configuration file not found at $configPath"
+    }
+    
     $content = Get-Content $configPath
     
     $section = ""
@@ -55,52 +59,70 @@ function Sync-Directory {
         "/MT:16",    # Use 16 threads for multi-threaded copying
         "/XJ",       # Exclude junction points
         "/XD", "SteamappsWorkshop",  # Exclude Workshop folder
-        "/NP",       # No progress - reduces log noise
-        "/NDL",      # No directory list - reduces log noise
+        "/V",        # Produce verbose output
         "/TEE"       # Output to console and log file
     )
     
-    robocopy @robocopyArgs
+    $robocopyOutput = & robocopy @robocopyArgs
+    $robocopyExitCode = $LASTEXITCODE
+
+    Write-Host "Robocopy Output:"
+    $robocopyOutput | ForEach-Object { Write-Host $_ }
     
-    if ($LASTEXITCODE -ge 8) {
-        Write-Host "Warning: Robocopy encountered errors while syncing $source" -ForegroundColor Yellow
-    }
-    else {
-        Write-Host "Successfully synced $source" -ForegroundColor Green
+    switch ($robocopyExitCode) {
+        0 { Write-Host "No files were copied. No failure was encountered. No files were mismatched. The files already exist in the destination directory; therefore, the copy operation was skipped." -ForegroundColor Green }
+        1 { Write-Host "All files were copied successfully." -ForegroundColor Green }
+        2 { Write-Host "There are some additional files in the destination directory that are not present in the source directory. No files were copied." -ForegroundColor Yellow }
+        3 { Write-Host "Some files were copied. Additional files were present. No failure was encountered." -ForegroundColor Yellow }
+        5 { Write-Host "Some files were copied. Some files were mismatched. No failure was encountered." -ForegroundColor Yellow }
+        6 { Write-Host "Additional files and mismatched files exist. No files were copied and no failures were encountered. This means that the files already exist in the destination directory." -ForegroundColor Yellow }
+        7 { Write-Host "Files were copied, a file mismatch was present, and additional files were present." -ForegroundColor Yellow }
+        8 { Write-Host "Several files did not copy." -ForegroundColor Red }
+        default { Write-Host "Unexpected Robocopy exit code: $robocopyExitCode" -ForegroundColor Red }
     }
 }
 
 # Main script
 
-# Set the path to your configuration file
-$configPath = ".\config.ini"
+try {
+    # Set the path to your configuration file
+    $configPath = "config.ini"
 
-# Read the configuration
-$config = Read-ConfigFile $configPath
+    # Read the configuration
+    $config = Read-ConfigFile $configPath
 
-if (-not $config.Destination) {
-    Write-Host "Error: Destination path not specified in the configuration file." -ForegroundColor Red
-    exit 1
-}
-
-if ($config.Sources.Count -eq 0) {
-    Write-Host "Error: No source directories specified in the configuration file." -ForegroundColor Red
-    exit 1
-}
-
-# Create the destination directory if it doesn't exist
-if (!(Test-Path $config.Destination)) {
-    New-Item -ItemType Directory -Path $config.Destination | Out-Null
-}
-
-# Sync each source directory
-foreach ($source in $config.Sources) {
-    if (Test-Path $source) {
-        Sync-Directory $source $config.Destination
+    if (-not $config.Destination) {
+        throw "Destination path not specified in the configuration file."
     }
-    else {
-        Write-Host "Warning: Source directory $source does not exist. Skipping." -ForegroundColor Yellow
-    }
-}
 
-Write-Host "Sync process completed." -ForegroundColor Green
+    if ($config.Sources.Count -eq 0) {
+        throw "No source directories specified in the configuration file."
+    }
+
+    # Create the destination directory if it doesn't exist
+    if (!(Test-Path $config.Destination)) {
+        New-Item -ItemType Directory -Path $config.Destination | Out-Null
+    }
+
+    # Sync each source directory
+    foreach ($source in $config.Sources) {
+        if (Test-Path $source) {
+            Sync-Directory $source $config.Destination
+        }
+        else {
+            Write-Host "Warning: Source directory $source does not exist. Skipping." -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host "Sync process completed." -ForegroundColor Green
+}
+catch {
+    Write-Host "An error occurred:" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host "Stack Trace:" -ForegroundColor Red
+    Write-Host $_.ScriptStackTrace -ForegroundColor Red
+}
+finally {
+    Write-Host "Press any key to exit..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
